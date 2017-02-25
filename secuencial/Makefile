@@ -9,12 +9,12 @@ EXECUTABLE=secuencial
 SDIR=src
 ODIR=target
 
-all: clean $(ODIR) rastreador
+all: clean $(ODIR) secuencial
 
 main.o: $(SDIR)/*.c
 	$(CC) -c $(SDIR)/$(SOURCES) -o $(ODIR)/$(OBJECTS)
 
-rastreador: main.o
+secuencial: main.o
 	$(CC) $(ODIR)/main.o -o $(ODIR)/$(EXECUTABLE)
 
 $(ODIR):

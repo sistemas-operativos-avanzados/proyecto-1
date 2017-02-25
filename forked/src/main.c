@@ -194,6 +194,8 @@ int main(int argc, char *argv[]){
                 break;
             case 0:
 
+                /*Inicia un nuevo proceso hijo */
+
                 close(fd_server);
                 int pid = getpid();
 

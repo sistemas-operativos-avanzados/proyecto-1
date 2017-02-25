@@ -5,20 +5,25 @@
 CC=gcc
 SOURCES=main.c
 OBJECTS=$(SOURCES:.c=.o)
-EXECUTABLE=forked
+EXECUTABLE=threaded
 SDIR=src
 ODIR=target
 
-all: clean $(ODIR) forked
+all: clean $(ODIR) threaded
 
 main.o: $(SDIR)/*.c
-	$(CC) -c $(SDIR)/$(SOURCES) -o $(ODIR)/$(OBJECTS)
+	$(CC) -pthreaded -c $(SOURCES) -o $(OBJECTS)
 
-forked: main.o
-	$(CC) $(ODIR)/main.o -o $(ODIR)/$(EXECUTABLE)
+threaded: main.o
+	$(CC) main.o -o $(EXECUTABLE)
 
 $(ODIR):
 	mkdir target/
 
-clean:
-	rm -rf target/
+clean: cleanobj cleanexec
+
+cleanobj:
+    rm main.o
+
+cleanexec:
+    rm $(EXECUTABLE)
