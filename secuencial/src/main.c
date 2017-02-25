@@ -24,6 +24,9 @@ char webpage[] =
 ;
 
 
+char notFoundPage[] = "<html><head><title>404</head></title>"
+        "<body><p>404: El recurso solicitado no se encontró</p></body></html>";
+
 int fd_server;
 char* ROOT_FOLDER = "web-resources";
 
@@ -56,7 +59,19 @@ extn extensions[] ={
 };
 
 
+char *okHeader = "HTTP/1.1 200 OK\r\nContent-Type: %s charset=UTF-8\r\nServer : SOA-Server-Secuencial\r\n\r\n";
+char *notFoundHeader = "HTTP/1.1 400 Not Found\r\nContent-Type: text/html charset=UTF-8\r\nServer : SOA-Server-Secuencial\r\n\r\n";
+char *notSupportedHeader = "HTTP/1.1 415 Unsupported Media Type\r\nnServer : SOA-Server-Secuencial\r\n\r\n";
+
 // -----------------------------------------------------------------------------------------------------
+
+char *successHeader(char *mimeType){
+
+    char header[500];
+    sprintf(header, okHeader, mimeType);
+    return strdup(header);
+}
+
 
 char *mimeType(char* resourceExt){
 
@@ -82,7 +97,7 @@ void handleShutdown(int sig){
         close(fd_server);
     }
 
-    printf("\nSOA-Server-Sec: Bye! \n");
+    printf("\nSOA-Server-Secuencial: Bye! \n");
     exit(0);
 }
 
@@ -131,7 +146,7 @@ void bindToPort(int socket, int port){
     }
 }
 
-int get_file_size(int fd) {
+int getFileSize(int fd) {
     struct stat stat_struct;
     if (fstat(fd, &stat_struct) == -1)
         return (1);
@@ -196,15 +211,18 @@ int main(int argc, char *argv[]){
 
         int fileResource = open(filePath, O_RDONLY);
         if(fileResource != -1) {
-            write(fd_client, "HTTP/1.1 200 OK\r\n", strlen("HTTP/1.1 200 OK\r\n"));
-            write(fd_client, "Content-Type: text/html; charset=UTF-8\r\n", strlen("Content-Type: text/html; charset=UTF-8\r\n"));
-            write(fd_client, "Server : SOA-Server-Sec\r\n\r\n", strlen("Server : SOA-Server-Sec\r\n\r\n"));
+//            write(fd_client, "HTTP/1.1 200 OK\r\n", strlen("HTTP/1.1 200 OK\r\n"));
+//            write(fd_client, "Content-Type: text/html; charset=UTF-8\r\n", strlen("Content-Type: text/html; charset=UTF-8\r\n"));
+//            write(fd_client, "Server : SOA-Server-Sec\r\n\r\n", strlen("Server : SOA-Server-Sec\r\n\r\n"));
 
-//            sendfile(fd_client, fileResource, NULL, 5100000);
+            char *mime = mimeType(strstr(filePath, "."));
+            char *header = successHeader(mime);
+            printf("HEADER = %s", header);
 
+            write(fd_client, header, strlen(header));
 
             int length;
-            if ((length = get_file_size(fileResource)) == -1) {
+            if ((length = getFileSize(fileResource)) == -1) {
                 printf("Error in getting size !\n");
             }
 
@@ -222,7 +240,9 @@ int main(int argc, char *argv[]){
 
         }else{
             printf("Archivo no se encuentra \n");
-            //TODO: hacer 404
+//            char *header = notFoundPage
+            write(fd_client, notFoundHeader, strlen(notFoundHeader));
+            write(fd_client, notFoundPage, strlen(notFoundPage));
         }
 
         printf("<== Finalizando conexion\n\n");
