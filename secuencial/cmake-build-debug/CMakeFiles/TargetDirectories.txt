@@ -1,3 +1,0 @@
-/Users/martinflores/Documents/tec/sistemas-operativos-avanzados/proyecto-1/secuencial/cmake-build-debug/CMakeFiles/edit_cache.dir
-/Users/martinflores/Documents/tec/sistemas-operativos-avanzados/proyecto-1/secuencial/cmake-build-debug/CMakeFiles/rebuild_cache.dir
-/Users/martinflores/Documents/tec/sistemas-operativos-avanzados/proyecto-1/secuencial/cmake-build-debug/CMakeFiles/secuencial.dir

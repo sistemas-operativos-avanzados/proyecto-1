@@ -1,3 +1,14 @@
 .DS_Store
 
-target/**
+*.o
+
+# IntelliJ
+*.iml
+*.ipr
+*.iws
+*.idea/
+
+CMakeLists.txt
+cmake-build-debug/
+
+target/
