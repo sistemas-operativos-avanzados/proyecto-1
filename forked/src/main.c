@@ -59,9 +59,9 @@ extn extensions[] ={
 };
 
 
-char *okHeader = "HTTP/1.1 200 OK\r\nContent-Type: %s charset=UTF-8\r\nServer : SOA-Server-Secuencial\r\n\r\n";
-char *notFoundHeader = "HTTP/1.1 400 Not Found\r\nContent-Type: text/html charset=UTF-8\r\nServer : SOA-Server-Secuencial\r\n\r\n";
-char *notSupportedHeader = "HTTP/1.1 415 Unsupported Media Type\r\nnServer : SOA-Server-Secuencial\r\n\r\n";
+char *okHeader = "HTTP/1.1 200 OK\r\nContent-Type: %s charset=UTF-8\r\nServer : SOA-Server-Forked\r\n\r\n";
+char *notFoundHeader = "HTTP/1.1 400 Not Found\r\nContent-Type: text/html charset=UTF-8\r\nServer : SOA-Server-Forked\r\n\r\n";
+char *notSupportedHeader = "HTTP/1.1 415 Unsupported Media Type\r\nnServer : SOA-Server-Forked\r\n\r\n";
 
 // -----------------------------------------------------------------------------------------------------
 
@@ -97,7 +97,7 @@ void handleShutdown(int sig){
         close(fd_server);
     }
 
-    printf("\nSOA-Server-Secuencial: Bye! \n");
+    printf("\nSOA-Server-Forked: Bye! \n");
     exit(0);
 }
 
@@ -186,61 +186,79 @@ int main(int argc, char *argv[]){
             continue;
         }
 
-        printf("\n==> Conexion iniciada\n");
-        memset(buf, 0, 2048); //     <==== aqui se va a dejar todo lo que viene en la peticion HTTP
-        memset(filePath, 0, 500); // <==== aqui se va a dejar la ruta al archivo
-        //TODO: valorar si cambiar este read por transmision bit a bit
-        //TODO: validar si la peticion es de tipo HTTP GET, sino descartarla
-        read(fd_client, buf, 2047);
-//        printf("%s \n", buf);
+        switch(fork()){
+
+            case -1:
+                printf("No se pudo crear proceso hijo");
+                close(fd_client);
+                break;
+            case 0:
+
+                close(fd_server);
+                int pid = getpid();
+
+                printf("\n==> Conexion iniciada, Pid = %d \n", pid);
+                memset(buf, 0, 2048); //     <==== aqui se va a dejar todo lo que viene en la peticion HTTP
+                memset(filePath, 0, 500); // <==== aqui se va a dejar la ruta al archivo
+                //TODO: valorar si cambiar este read por transmision bit a bit
+                //TODO: validar si la peticion es de tipo HTTP GET, sino descartarla
+                read(fd_client, buf, 2047);
+        //        printf("%s \n", buf);
 
 
-        //Creando la ruta hacia el archivo, esto deberia de ir en una funcion por aparte
-        strcpy(filePath, ROOT_FOLDER);
-        int i = 4, j = 0;
-        char urlPath[500];
-        memset(urlPath, 0, 500);
-        while(buf[i] != ' '){ // <=== iterar hasta encontrar el primer espacio en blanco, hasta alli llega el path
-            urlPath[j] = buf[i];
-            i++; j++;
-        }
-        strcat(filePath, urlPath);
-        printf("path = %s \n", filePath);
-
-        int fileResource = open(filePath, O_RDONLY);
-        if(fileResource != -1) {
-
-            char *mime = mimeType(strstr(filePath, "."));
-            char *header = successHeader(mime);
-            printf("HEADER = %s", header);
-
-            write(fd_client, header, strlen(header));
-
-            int length;
-            if ((length = getFileSize(fileResource)) == -1) {
-                printf("Error obtiendo tamanno de archivo\n");
-            }
-
-            size_t total_bytes_sent = 0;
-            ssize_t bytes_sent;
-            while (total_bytes_sent < length) {
-                if ((bytes_sent = sendfile(fd_client, fileResource, 0, length - total_bytes_sent)) <= 0) {
-                    printf("sendfile error\n");
-                    return -1;
+                //Creando la ruta hacia el archivo, esto deberia de ir en una funcion por aparte
+                strcpy(filePath, ROOT_FOLDER);
+                int i = 4, j = 0;
+                char urlPath[500];
+                memset(urlPath, 0, 500);
+                while(buf[i] != ' '){ // <=== iterar hasta encontrar el primer espacio en blanco, hasta alli llega el path
+                    urlPath[j] = buf[i];
+                    i++; j++;
                 }
-                total_bytes_sent += bytes_sent;
-            }
-            close(fileResource);
+                strcat(filePath, urlPath);
+                printf("path = %s, Pid = %d \n", filePath, pid);
+
+                int fileResource = open(filePath, O_RDONLY);
+                if(fileResource != -1) {
+
+                    char *mime = mimeType(strstr(filePath, "."));
+                    char *header = successHeader(mime);
+//                    printf("HEADER = %s", header);
+
+                    write(fd_client, header, strlen(header));
+
+                    int length;
+                    if ((length = getFileSize(fileResource)) == -1) {
+                        printf("Error obtiendo tamanno de archivo, Pid = %d !\n", pid);
+                    }
+
+                    size_t total_bytes_sent = 0;
+                    ssize_t bytes_sent;
+                    while (total_bytes_sent < length) {
+                        if ((bytes_sent = sendfile(fd_client, fileResource, 0, length - total_bytes_sent)) <= 0) {
+                            printf("sendfile error, Pid = %d\n", pid);
+                            return -1;
+                        }
+                        total_bytes_sent += bytes_sent;
+                    }
+                    close(fileResource);
 
 
-        }else{
-            printf("Archivo no se encuentra \n");
-            write(fd_client, notFoundHeader, strlen(notFoundHeader));
-            write(fd_client, notFoundPage, strlen(notFoundPage));
+                }else{
+                    printf("Archivo no se encuentra, Pid = %d \n", pid);
+                    write(fd_client, notFoundHeader, strlen(notFoundHeader));
+                    write(fd_client, notFoundPage, strlen(notFoundPage));
+                }
+
+                printf("<== Finalizando conexion, Pid = %d\n\n", pid);
+                exit(0);
+
+
+            default:
+                close(fd_client);
+                break;
         }
 
-        printf("<== Finalizando conexion\n\n");
-        close(fd_client);
     }
 
     return 0;
