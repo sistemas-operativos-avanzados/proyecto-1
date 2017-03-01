@@ -12,6 +12,8 @@
 #include <signal.h>
 #include <errno.h>
 #include <syslog.h>
+#include <sys/mman.h>
+#include <pthread.h>
 
 
 char webpage[] =
@@ -67,6 +69,8 @@ char *notSupportedHeader = "HTTP/1.1 415 Unsupported Media Type\r\nnServer : SOA
 
 static int		nchildren;
 static pid_t	*pids;
+static pthread_mutex_t	*mptr;	/* actual mutex will be in shared memory */
+
 
 // -----------------------------------------------------------------------------------------------------
 
@@ -97,7 +101,7 @@ char *mimeType(char* resourceExt){
  */
 void handleShutdown(int sig){
 
-    printf("\nfinalizando...");
+    printf("\nfinalizando... \n");
     int i;
 
     /* terminate all children */
@@ -201,7 +205,7 @@ void processRequest(int fd_client){
 
 
     int fileResource = open(filePath, O_RDONLY);
-    printf("file = %d", fileResource);
+    printf("file = %d\n", fileResource);
     if (fileResource != -1) {
 
         char *mime = mimeType(strstr(filePath, "."));
@@ -238,6 +242,30 @@ void processRequest(int fd_client){
 
 
 
+void my_lock_init(char *pathname) {
+    int		fd;
+    pthread_mutexattr_t	mattr;
+
+    fd = open("/dev/zero", O_RDWR, 0);
+
+    mptr = mmap(0, sizeof(pthread_mutex_t), PROT_READ | PROT_WRITE, MAP_SHARED, fd, 0);
+    close(fd);
+
+    pthread_mutexattr_init(&mattr);
+    pthread_mutexattr_setpshared(&mattr, PTHREAD_PROCESS_SHARED);
+    pthread_mutex_init(mptr, &mattr);
+}
+
+void my_lock_wait() {
+    pthread_mutex_lock(mptr);
+}
+
+void my_lock_release() {
+    pthread_mutex_unlock(mptr);
+}
+
+
+
 
 void child_main(int i, int listedfd, int addrlen){
 
@@ -251,8 +279,10 @@ void child_main(int i, int listedfd, int addrlen){
 
     for( ; ; ){
         clilen = addrlen;
+        my_lock_wait();
         connfd = accept(listedfd, cliaddr, &clilen);
         printf("Solicitud atendida por PID %d\n", pid);
+        my_lock_release();
 
         processRequest(connfd);
 
@@ -263,7 +293,7 @@ void child_main(int i, int listedfd, int addrlen){
 
 
 
-pid_t  child_make(int i, int listedfd, int addrlen){
+pid_t child_make(int i, int listedfd, int addrlen){
 
     pid_t pid;
 
@@ -274,6 +304,10 @@ pid_t  child_make(int i, int listedfd, int addrlen){
     child_main(i, listedfd, addrlen);
 
 }
+
+
+
+
 
 
 int main(int argc, char *argv[]){
@@ -294,10 +328,11 @@ int main(int argc, char *argv[]){
         exit(1);
     }
 
-
+    //TODO: este valor tiene que venir por parametro
     nchildren = 5;
     pids = calloc(nchildren, sizeof(pid_t));
 
+    my_lock_init(NULL);
     for (i = 0; i < nchildren; i++) {
         pids[i] = child_make(i, fd_server, sin_len);    /* parent returns */
     }
