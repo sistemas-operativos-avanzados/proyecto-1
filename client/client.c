@@ -9,6 +9,7 @@
 #include <netdb.h>
 #include<pthread.h>
 
+
 char *host, *filename, *portno;
 int d_sock;
 
