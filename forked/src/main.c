@@ -16,7 +16,7 @@
 Servidor Forked HTTP:
 ==========================
  - Soporta únicamente solicitudes HTTP GET
- - Cada vez que llega una solicitud se crea un proceso nuevo para procesarlo
+ - Cada vez que llega una solicitud se crea un proceso nuevo para atenderlo
  - El directorio web-resources actúa como "raiz" para servir los localizar y servir los archivos que se le solicitan
  - Cada vez que se genera una conexión, se desplega en el stdout información sobre la misma
 
