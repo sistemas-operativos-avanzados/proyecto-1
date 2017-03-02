@@ -13,16 +13,23 @@
 #include <pthread.h>
 
 
-char webpage[] =
-        "HTTP/1.1 200 OK\r\n"
-                "Content-Type: text/html; charset=UTF-8\r\n\r\n"
-                "<!doctype html>\r\n"
-                "<html><head><title>Mi pagina</title></head>\r\n"
-                "<body><h1>Bienvenidos</h1>\r\n"
-                "<p>Esta es mi linda pagina!!!<br/>\r\n"
-                "<a><img src=\"cowboy.jpg\" title=\"un Cowboy\"></a></p>\r\n"
-                "</body></html>\r\n"
-;
+/*
+Servidor Threaded HTTP:
+==========================
+ - Soporta únicamente solicitudes HTTP GET
+ - Se crea un thread para atender cada solicitud
+ - El directorio web-resources actúa como "raiz" para servir los localizar y servir los archivos que se le solicitan
+ - Cada vez que se genera una conexión, se desplega en el stdout información sobre la misma
+
+Desarrollado por:
+=================
+- Raquel Elizondo Barrios
+- Carlos Martin Flores Gonzalez
+- Jose Daniel Salazar Vargas
+- Oscar Rodríguez Arroyo
+- Nelson Mendez Montero
+
+ */
 
 
 char notFoundPage[] = "<html><head><title>404</head></title>"
@@ -60,15 +67,21 @@ extn extensions[] ={
 };
 
 
-char *okHeader = "HTTP/1.1 200 OK\r\nContent-Type: %s charset=UTF-8\r\nServer : SOA-Server-Secuencial\r\n\r\n";
-char *notFoundHeader = "HTTP/1.1 400 Not Found\r\nContent-Type: text/html charset=UTF-8\r\nServer : SOA-Server-Secuencial\r\n\r\n";
-char *notSupportedHeader = "HTTP/1.1 415 Unsupported Media Type\r\nnServer : SOA-Server-Secuencial\r\n\r\n";
+char *okHeader = "HTTP/1.1 200 OK\r\nContent-Type: %s charset=UTF-8\r\nServer : SOA-Server-Threaded\r\n\r\n";
+char *notFoundHeader = "HTTP/1.1 400 Not Found\r\nContent-Type: text/html charset=UTF-8\r\nServer : SOA-Server-Threaded\r\n\r\n";
+char *notSupportedHeader = "HTTP/1.1 415 Unsupported Media Type\r\nnServer : SOA-Server-Threaded\r\n\r\n";
 
 
 
 static void	*doit(void *);
 
-// -----------------------------------------------------------------------------------------------------
+
+#define printable(ch) (isprint((unsigned char) ch) ? ch : '#')
+
+/* ==========================================================================================
+ * Funciones utilitarias
+ * ========================================================================================= */
+
 
 char *successHeader(char *mimeType){
 
@@ -91,6 +104,13 @@ char *mimeType(char* resourceExt){
 }
 
 
+int getFileSize(int fd) {
+    struct stat stat_struct;
+    if (fstat(fd, &stat_struct) == -1)
+        return (1);
+    return (int) stat_struct.st_size;
+}
+
 
 /*
  * Esta funcion actua como manejador de la "interrupcion" del Crtl+C
@@ -102,7 +122,7 @@ void handleShutdown(int sig){
         close(fd_server);
     }
 
-    printf("\nSOA-Server-Secuencial: Bye! \n");
+    printf("\nSOA-Server-Threaded: Bye! \n");
     exit(0);
 }
 
@@ -118,9 +138,20 @@ int catch_signal(int sig, void (*handler)(int)){
     return sigaction(sig, &action, NULL);
 }
 
-/*
- *
- */
+static void usageError(char *progName, char *msg, int opt) {
+    if (msg != NULL && opt != 0) {
+        fprintf(stderr, "%s (-%c)\n", msg, printable(opt));
+    }
+    fprintf(stderr, "Uso: %s [-v prog] [-V prog]\n", progName);
+    exit(EXIT_FAILURE);
+}
+
+
+/* ==========================================================================================
+ * Sockets: Abrir y asociar un puerto
+ * ========================================================================================= */
+
+
 int openListener(){
     int s = socket(AF_INET, SOCK_STREAM, 0);
     if(s < 0){
@@ -151,12 +182,6 @@ void bindToPort(int socket, int port){
     }
 }
 
-int getFileSize(int fd) {
-    struct stat stat_struct;
-    if (fstat(fd, &stat_struct) == -1)
-        return (1);
-    return (int) stat_struct.st_size;
-}
 
 // MAIN -----------------------------------------------------------------------------------------------------
 
@@ -164,13 +189,31 @@ int main(int argc, char *argv[]){
 
     struct sockaddr_in server_addr, client_addr;
     socklen_t sin_len, len;
-
-
-
     pthread_t tid;
-
     struct sockaddr *cliaddr;
     int *iptr;
+    int opt, port;
+
+
+    /* Validación del parametro de entrada -p */
+
+    if(argc == 1){
+        usageError(argv[0], "Falta parametro", 112);
+    }
+    while((opt = getopt(argc, argv, "-p:")) != EOF) {
+        switch (opt) {
+            case 'p':
+                port = atoi(optarg);
+                break;
+            case ':':
+                usageError(argv[0], "Falta argumento", optopt);
+            case '?':
+                usageError(argv[0], "Opcion invalida", optopt);
+            default:
+                usageError(argv[0], "Falta argumento", optopt);
+        }
+    }
+
 
     if(catch_signal(SIGINT, handleShutdown) == -1){
         printf("No se pudo mapear el manejador");
@@ -179,7 +222,7 @@ int main(int argc, char *argv[]){
 
     fd_server = openListener();
     //TODO: Valor del puerto tiene que ser pasado por parametro
-    bindToPort(fd_server, 8080);
+    bindToPort(fd_server, port);
 
     if(listen(fd_server, 10) == -1){ // una cola de 10 listeners
         printf("\n listen error \n");
@@ -187,76 +230,15 @@ int main(int argc, char *argv[]){
         exit(1);
     }
 
+    printf("\nSOA-Server-Threaded: Iniciando en puerto: %d \n", port);
+
     cliaddr = malloc(sin_len);
     while(1) {
         len = sin_len;
         iptr = malloc(sizeof(int));
         *iptr = accept(fd_server, (struct sockaddr *) &cliaddr, &len);
 
-//        int fd_client = accept(fd_server, (struct sockaddr *) &client_addr, &sin_len);
-//        if (fd_client == -1) {
-//            printf("\n**** Conexion fallida **** \n");
-//            continue;
-//        }
-
         pthread_create(&tid, NULL, &doit, iptr);
-
-
-//        printf("\n==> Conexion iniciada\n");
-//        memset(buf, 0, 2048); //     <==== aqui se va a dejar todo lo que viene en la peticion HTTP
-//        memset(filePath, 0, 500); // <==== aqui se va a dejar la ruta al archivo
-//        //TODO: valorar si cambiar este read por transmision bit a bit
-//        //TODO: validar si la peticion es de tipo HTTP GET, sino descartarla
-//        read(fd_client, buf, 2047);
-////        printf("%s \n", buf);
-//
-//
-//        //Creando la ruta hacia el archivo, esto deberia de ir en una funcion por aparte
-//        strcpy(filePath, ROOT_FOLDER);
-//        int i = 4, j = 0;
-//        char urlPath[500];
-//        memset(urlPath, 0, 500);
-//        while(buf[i] != ' '){ // <=== iterar hasta encontrar el primer espacio en blanco, hasta alli llega el path
-//            urlPath[j] = buf[i];
-//            i++; j++;
-//        }
-//        strcat(filePath, urlPath);
-//        printf("path = %s \n", filePath);
-//
-//        int fileResource = open(filePath, O_RDONLY);
-//        if(fileResource != -1) {
-//
-//            char *mime = mimeType(strstr(filePath, "."));
-//            char *header = successHeader(mime);
-//            printf("HEADER = %s", header);
-//
-//            write(fd_client, header, strlen(header));
-//
-//            int length;
-//            if ((length = getFileSize(fileResource)) == -1) {
-//                printf("Error obtiendo tamanno de archivo\n");
-//            }
-//
-//            size_t total_bytes_sent = 0;
-//            ssize_t bytes_sent;
-//            while (total_bytes_sent < length) {
-//                if ((bytes_sent = sendfile(fd_client, fileResource, 0, length - total_bytes_sent)) <= 0) {
-//                    printf("sendfile error\n");
-//                    return -1;
-//                }
-//                total_bytes_sent += bytes_sent;
-//            }
-//            close(fileResource);
-//
-//
-//        }else{
-//            printf("Archivo no se encuentra \n");
-//            write(fd_client, notFoundHeader, strlen(notFoundHeader));
-//            write(fd_client, notFoundPage, strlen(notFoundPage));
-//        }
-//
-//        printf("<== Finalizando conexion\n\n");
-//        close(fd_client);
     }
 
     return 0;
@@ -264,6 +246,9 @@ int main(int argc, char *argv[]){
 }
 
 
+/* ==========================================================================================
+ * Procesar una solicitud (request)
+ * ========================================================================================= */
 static void *doit(void *arg){
     int fd_client = *((int *) arg);
     free(arg);
@@ -294,7 +279,7 @@ static void *doit(void *arg){
 
 
     int fileResource = open(filePath, O_RDONLY);
-    printf("file = %d", fileResource);
+//    printf("file = %d", fileResource);
     if(fileResource != -1) {
 
         char *mime = mimeType(strstr(filePath, "."));
