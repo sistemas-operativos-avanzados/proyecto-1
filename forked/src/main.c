@@ -12,16 +12,23 @@
 #include <signal.h>
 
 
-char webpage[] =
-        "HTTP/1.1 200 OK\r\n"
-                "Content-Type: text/html; charset=UTF-8\r\n\r\n"
-                "<!doctype html>\r\n"
-                "<html><head><title>Mi pagina</title></head>\r\n"
-                "<body><h1>Bienvenidos</h1>\r\n"
-                "<p>Esta es mi linda pagina!!!<br/>\r\n"
-                "<a><img src=\"cowboy.jpg\" title=\"un Cowboy\"></a></p>\r\n"
-                "</body></html>\r\n"
-;
+/*
+Servidor Forked HTTP:
+==========================
+ - Soporta únicamente solicitudes HTTP GET
+ - Cada vez que llega una solicitud se crea un proceso nuevo para procesarlo
+ - El directorio web-resources actúa como "raiz" para servir los localizar y servir los archivos que se le solicitan
+ - Cada vez que se genera una conexión, se desplega en el stdout información sobre la misma
+
+Desarrollado por:
+=================
+- Raquel Elizondo Barrios
+- Carlos Martin Flores Gonzalez
+- Jose Daniel Salazar Vargas
+- Oscar Rodríguez Arroyo
+- Nelson Mendez Montero
+
+ */
 
 
 char notFoundPage[] = "<html><head><title>404</head></title>"
@@ -63,7 +70,11 @@ char *okHeader = "HTTP/1.1 200 OK\r\nContent-Type: %s charset=UTF-8\r\nServer : 
 char *notFoundHeader = "HTTP/1.1 400 Not Found\r\nContent-Type: text/html charset=UTF-8\r\nServer : SOA-Server-Forked\r\n\r\n";
 char *notSupportedHeader = "HTTP/1.1 415 Unsupported Media Type\r\nnServer : SOA-Server-Forked\r\n\r\n";
 
-// -----------------------------------------------------------------------------------------------------
+#define printable(ch) (isprint((unsigned char) ch) ? ch : '#')
+
+/* ==========================================================================================
+ * Funciones utilitarias
+ * ========================================================================================= */
 
 char *successHeader(char *mimeType){
 
@@ -85,6 +96,12 @@ char *mimeType(char* resourceExt){
     return "application/octed-stream";
 }
 
+int getFileSize(int fd) {
+    struct stat stat_struct;
+    if (fstat(fd, &stat_struct) == -1)
+        return (1);
+    return (int) stat_struct.st_size;
+}
 
 
 /*
@@ -113,9 +130,19 @@ int catch_signal(int sig, void (*handler)(int)){
     return sigaction(sig, &action, NULL);
 }
 
-/*
- *
- */
+static void usageError(char *progName, char *msg, int opt) {
+    if (msg != NULL && opt != 0) {
+        fprintf(stderr, "%s (-%c)\n", msg, printable(opt));
+    }
+    fprintf(stderr, "Uso: %s [-v prog] [-V prog]\n", progName);
+    exit(EXIT_FAILURE);
+}
+
+/* ==========================================================================================
+ * Sockets: Abrir y asociar un puerto
+ * ========================================================================================= */
+
+
 int openListener(){
     int s = socket(AF_INET, SOCK_STREAM, 0);
     if(s < 0){
@@ -146,11 +173,73 @@ void bindToPort(int socket, int port){
     }
 }
 
-int getFileSize(int fd) {
-    struct stat stat_struct;
-    if (fstat(fd, &stat_struct) == -1)
-        return (1);
-    return (int) stat_struct.st_size;
+/* ==========================================================================================
+ * Procesar una solicitud (request)
+ * ========================================================================================= */
+
+void processRequest(int fd_client){
+
+    char buf[2048];
+    char filePath[500];
+
+    close(fd_server);
+    int pid = getpid();
+
+    printf("\n==> Conexion iniciada, Pid = %d \n", pid);
+    memset(buf, 0, 2048); //     <==== aqui se va a dejar todo lo que viene en la peticion HTTP
+    memset(filePath, 0, 500); // <==== aqui se va a dejar la ruta al archivo
+    //TODO: valorar si cambiar este read por transmision bit a bit
+    //TODO: validar si la peticion es de tipo HTTP GET, sino descartarla
+    read(fd_client, buf, 2047);
+    //        printf("%s \n", buf);
+
+
+    //Creando la ruta hacia el archivo, esto deberia de ir en una funcion por aparte
+    strcpy(filePath, ROOT_FOLDER);
+    int i = 4, j = 0;
+    char urlPath[500];
+    memset(urlPath, 0, 500);
+    while(buf[i] != ' '){ // <=== iterar hasta encontrar el primer espacio en blanco, hasta alli llega el path
+        urlPath[j] = buf[i];
+        i++; j++;
+    }
+    strcat(filePath, urlPath);
+    printf("path = %s, Pid = %d \n", filePath, pid);
+
+    int fileResource = open(filePath, O_RDONLY);
+    if(fileResource != -1) {
+
+        char *mime = mimeType(strstr(filePath, "."));
+        char *header = successHeader(mime);
+//                    printf("HEADER = %s", header);
+
+        write(fd_client, header, strlen(header));
+
+        int length;
+        if ((length = getFileSize(fileResource)) == -1) {
+            printf("Error obtiendo tamanno de archivo, Pid = %d !\n", pid);
+        }
+
+        size_t total_bytes_sent = 0;
+        ssize_t bytes_sent;
+        while (total_bytes_sent < length) {
+            if ((bytes_sent = sendfile(fd_client, fileResource, 0, length - total_bytes_sent)) <= 0) {
+                printf("sendfile error, Pid = %d\n", pid);
+//                return -1;
+            }
+            total_bytes_sent += bytes_sent;
+        }
+        close(fileResource);
+
+
+    }else{
+        printf("Archivo no se encuentra, Pid = %d \n", pid);
+        write(fd_client, notFoundHeader, strlen(notFoundHeader));
+        write(fd_client, notFoundPage, strlen(notFoundPage));
+    }
+
+    printf("<== Finalizando conexion, Pid = %d\n\n", pid);
+
 }
 
 
@@ -158,10 +247,28 @@ int getFileSize(int fd) {
 
 int main(int argc, char *argv[]){
 
-    struct sockaddr_in server_addr, client_addr;
+    struct sockaddr_in client_addr;
     socklen_t sin_len = sizeof(client_addr);
-    char buf[2048];
-    char filePath[500];
+    int opt, port;
+
+    /* Validación del parametro de entrada -p */
+    if(argc == 1){
+        printf("sin argumentos\n");
+        usageError(argv[0], "Falta parametro", 112);
+    }
+    while((opt = getopt(argc, argv, "-p:")) != EOF) {
+        switch (opt) {
+            case 'p':
+                port = atoi(optarg);
+                break;
+            case ':':
+                usageError(argv[0], "Falta argumento", optopt);
+            case '?':
+                usageError(argv[0], "Opcion invalida", optopt);
+            default:
+                usageError(argv[0], "Falta argumento", optopt);
+        }
+    }
 
 
     if(catch_signal(SIGINT, handleShutdown) == -1){
@@ -170,14 +277,15 @@ int main(int argc, char *argv[]){
     }
 
     fd_server = openListener();
-    //TODO: Valor del puerto tiene que ser pasado por parametro
-    bindToPort(fd_server, 8080);
+    bindToPort(fd_server, port);
 
     if(listen(fd_server, 10) == -1){ // una cola de 10 listeners
         printf("\n listen error \n");
         close(fd_server);
         exit(1);
     }
+
+    printf("\nSOA-Server-Forked: Iniciando en puerto: %d \n", port);
 
     while(1){
         int fd_client = accept(fd_server, (struct sockaddr *) &client_addr, &sin_len);
@@ -193,69 +301,9 @@ int main(int argc, char *argv[]){
                 close(fd_client);
                 break;
             case 0:
-
                 /*Inicia un nuevo proceso hijo */
-
-                close(fd_server);
-                int pid = getpid();
-
-                printf("\n==> Conexion iniciada, Pid = %d \n", pid);
-                memset(buf, 0, 2048); //     <==== aqui se va a dejar todo lo que viene en la peticion HTTP
-                memset(filePath, 0, 500); // <==== aqui se va a dejar la ruta al archivo
-                //TODO: valorar si cambiar este read por transmision bit a bit
-                //TODO: validar si la peticion es de tipo HTTP GET, sino descartarla
-                read(fd_client, buf, 2047);
-        //        printf("%s \n", buf);
-
-
-                //Creando la ruta hacia el archivo, esto deberia de ir en una funcion por aparte
-                strcpy(filePath, ROOT_FOLDER);
-                int i = 4, j = 0;
-                char urlPath[500];
-                memset(urlPath, 0, 500);
-                while(buf[i] != ' '){ // <=== iterar hasta encontrar el primer espacio en blanco, hasta alli llega el path
-                    urlPath[j] = buf[i];
-                    i++; j++;
-                }
-                strcat(filePath, urlPath);
-                printf("path = %s, Pid = %d \n", filePath, pid);
-
-                int fileResource = open(filePath, O_RDONLY);
-                if(fileResource != -1) {
-
-                    char *mime = mimeType(strstr(filePath, "."));
-                    char *header = successHeader(mime);
-//                    printf("HEADER = %s", header);
-
-                    write(fd_client, header, strlen(header));
-
-                    int length;
-                    if ((length = getFileSize(fileResource)) == -1) {
-                        printf("Error obtiendo tamanno de archivo, Pid = %d !\n", pid);
-                    }
-
-                    size_t total_bytes_sent = 0;
-                    ssize_t bytes_sent;
-                    while (total_bytes_sent < length) {
-                        if ((bytes_sent = sendfile(fd_client, fileResource, 0, length - total_bytes_sent)) <= 0) {
-                            printf("sendfile error, Pid = %d\n", pid);
-                            return -1;
-                        }
-                        total_bytes_sent += bytes_sent;
-                    }
-                    close(fileResource);
-
-
-                }else{
-                    printf("Archivo no se encuentra, Pid = %d \n", pid);
-                    write(fd_client, notFoundHeader, strlen(notFoundHeader));
-                    write(fd_client, notFoundPage, strlen(notFoundPage));
-                }
-
-                printf("<== Finalizando conexion, Pid = %d\n\n", pid);
+                processRequest(fd_client);
                 exit(0);
-
-
             default:
                 close(fd_client);
                 break;

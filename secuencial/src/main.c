@@ -11,16 +11,6 @@
 #include <signal.h>
 
 
-//char webpage[] =
-//        "HTTP/1.1 200 OK\r\n"
-//                "Content-Type: text/html; charset=UTF-8\r\n\r\n"
-//                "<!doctype html>\r\n"
-//                "<html><head><title>Mi pagina</title></head>\r\n"
-//                "<body><h1>Bienvenidos</h1>\r\n"
-//                "<p>Esta es mi linda pagina!!!<br/>\r\n"
-//                "<a><img src=\"cowboy.jpg\" title=\"un Cowboy\"></a></p>\r\n"
-//                "</body></html>\r\n"
-//;
 
 /*
 Servidor Secuencial HTTP:
