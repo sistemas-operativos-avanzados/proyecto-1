@@ -4,34 +4,53 @@
 #include <sys/types.h>
 #include <sys/socket.h>
 #include <netinet/in.h>
-#include <netdb.h>
 #include <arpa/inet.h>
 #include <string.h>
 #include <sys/stat.h>
 #include <fcntl.h>
 #include <signal.h>
-#include <errno.h>
-#include <syslog.h>
 #include <pthread.h>
 
 
-char webpage[] =
-        "HTTP/1.1 200 OK\r\n"
-                "Content-Type: text/html; charset=UTF-8\r\n\r\n"
-                "<!doctype html>\r\n"
-                "<html><head><title>Mi pagina</title></head>\r\n"
-                "<body><h1>Bienvenidos</h1>\r\n"
-                "<p>Esta es mi linda pagina!!!<br/>\r\n"
-                "<a><img src=\"cowboy.jpg\" title=\"un Cowboy\"></a></p>\r\n"
-                "</body></html>\r\n"
-;
+/*
+Servidor PreThreaded HTTP:
+==========================
+ - Soporta únicamente solicitudes HTTP GET
+ - Está en la capacidad de atender una a la vez.
+ - El directorio web-resources actúa como "raiz" para servir los localizar y servir los archivos que se le solicitan
+ - Cada vez que se genera una conexión, se desplega en el stdout información sobre la misma
+
+Desarrollado por:
+=================
+- Raquel Elizondo Barrios
+- Carlos Martin Flores Gonzalez
+- Jose Daniel Salazar Vargas
+- Oscar Rodríguez Arroyo
+- Nelson Mendez Montero
+
+ */
+
+
+typedef struct {
+    pthread_t		thread_tid;		/* thread ID */
+    long			thread_count;	/* # connections handled */
+} Thread;
+Thread	*tptr;		/* array of Thread structures; calloc'ed */
+
+#define	MAXNCLI	32
+int					clifd[MAXNCLI], iget, iput;
+pthread_mutex_t		clifd_mutex;
+pthread_cond_t		clifd_cond;
+
+static int			nthreads;
+pthread_mutex_t		clifd_mutex = PTHREAD_MUTEX_INITIALIZER;
+pthread_cond_t		clifd_cond = PTHREAD_COND_INITIALIZER;
+
 
 
 char notFoundPage[] = "<html><head><title>404</head></title>"
         "<body><p>404: El recurso solicitado no se encontró</p></body></html>";
 
-int fd_server;
-socklen_t sin_len;
 char* ROOT_FOLDER = "web-resources";
 
 
@@ -63,24 +82,16 @@ extn extensions[] ={
 };
 
 
-char *okHeader = "HTTP/1.1 200 OK\r\nContent-Type: %s charset=UTF-8\r\nServer : SOA-Server-Forked\r\n\r\n";
-char *notFoundHeader = "HTTP/1.1 400 Not Found\r\nContent-Type: text/html charset=UTF-8\r\nServer : SOA-Server-Forked\r\n\r\n";
-char *notSupportedHeader = "HTTP/1.1 415 Unsupported Media Type\r\nnServer : SOA-Server-Forked\r\n\r\n";
 
-//TODO: este valor se tiene que pasar por parámetro
-int nthreads = 5;
+char *okHeader = "HTTP/1.1 200 OK\r\nContent-Type: %s charset=UTF-8\r\nServer : SOA-Server-PreThreaded\r\n\r\n";
+char *notFoundHeader = "HTTP/1.1 400 Not Found\r\nContent-Type: text/html charset=UTF-8\r\nServer : SOA-Server-PreThreaded\r\n\r\n";
+char *notSupportedHeader = "HTTP/1.1 415 Unsupported Media Type\r\nnServer : SOA-Server-PreThreaded\r\n\r\n";
 
-typedef struct {
-    pthread_t		thread_tid;		/* thread ID */
-    long			thread_count;	/* # connections handled */
-} Thread;
-Thread	*tptr;		/* array of Thread structures; calloc'ed */
+#define printable(ch) (isprint((unsigned char) ch) ? ch : '#')
 
-
-pthread_mutex_t	mlock;
-
-
-// -----------------------------------------------------------------------------------------------------
+/* ==========================================================================================
+ * Funciones utilitarias
+ * ========================================================================================= */
 
 char *successHeader(char *mimeType){
 
@@ -102,6 +113,13 @@ char *mimeType(char* resourceExt){
     return "application/octed-stream";
 }
 
+
+int getFileSize(int fd) {
+    struct stat stat_struct;
+    if (fstat(fd, &stat_struct) == -1)
+        return (1);
+    return (int) stat_struct.st_size;
+}
 
 
 /*
@@ -131,9 +149,20 @@ int catch_signal(int sig, void (*handler)(int)){
     return sigaction(sig, &action, NULL);
 }
 
-/*
- *
- */
+
+static void usageError(char *progName, char *msg, int opt) {
+    if (msg != NULL && opt != 0) {
+        fprintf(stderr, "%s (-%c)\n", msg, printable(opt));
+    }
+    fprintf(stderr, "Uso: %s [-p puerto] [-n cantidad de threads]\n", progName);
+    exit(EXIT_FAILURE);
+}
+
+
+/* ==========================================================================================
+ * Sockets: Abrir y asociar un puerto
+ * ========================================================================================= */
+
 int openListener(){
     int s = socket(AF_INET, SOCK_STREAM, 0);
     if(s < 0){
@@ -142,9 +171,7 @@ int openListener(){
     }
 }
 
-/*
- *
- */
+
 void bindToPort(int socket, int port){
     struct sockaddr_in server_addr;
     int reuse = 1;
@@ -164,18 +191,13 @@ void bindToPort(int socket, int port){
     }
 }
 
-int getFileSize(int fd) {
-    struct stat stat_struct;
-    if (fstat(fd, &stat_struct) == -1)
-        return (1);
-    return (int) stat_struct.st_size;
-}
 
-// MAIN -----------------------------------------------------------------------------------------------------
 
+/* ==========================================================================================
+ * Procesar una solicitud (request)
+ * ========================================================================================= */
 
 void processRequest(int fd_client){
-
 
     char buf[2048];
     char filePath[500];
@@ -239,68 +261,125 @@ void processRequest(int fd_client){
     puts("<== Finalizando conexion\n\n");
 }
 
+/* ==========================================================================================
+ * Creacion de Threads
+ * ========================================================================================= */
 
 
+/*
+ *
+ * Cada thread en el pool intenta obtener un lock del mutex que protege el array "clifd". Cuando el lock se obtiene,
+ * no hay nada que hacer si los índices "iget" e "iput" son iguales. Bajo ese escenario, el hilo se va a dormir(sleep)
+ * por medio de la llamada a pthread_cond_wait. Será despertado cuando se llama a pthread_cond_signal en el thread
+ * principal luego de que una conexion sea aceptada. Cuando un thread obtiene una conexión llama a processRequest.
+ *
+ */
 
+
+void thread_make(int i) {
+    void	*thread_main(void *);
+//    printf("inside thread_make i = %d\n", i);
+    pthread_create(&tptr[i].thread_tid, NULL, &thread_main, &i);
+    return;		/* main thread returns */
+}
 
 void *thread_main(void *arg) {
+    int		connfd;
 
-    int				connfd;
-    void			web_child(int);
-    socklen_t		clilen;
-    struct sockaddr	*cliaddr;
+    int theArg = *((int *) arg);
 
-    cliaddr = malloc(sin_len);
-
-    printf("Hilo %ld iniciando\n", (long) arg);
+    printf("Iniciando thread %d \n", theArg);
     for ( ; ; ) {
-        clilen = sin_len;
-        pthread_mutex_lock(&mlock);
-        connfd = accept(fd_server, cliaddr, &clilen);
-        pthread_mutex_unlock(&mlock);
-        tptr[(long) arg].thread_count++;
-
-//        web_child(connfd);		/* process request */
+        pthread_mutex_lock(&clifd_mutex);
+        while (iget == iput) {
+            pthread_cond_wait(&clifd_cond, &clifd_mutex);
+        }
+        connfd = clifd[iget];    /* connected socket to service */
+        if (++iget == MAXNCLI) {
+            iget = 0;
+        }
+        pthread_mutex_unlock(&clifd_mutex);
+        tptr[theArg].thread_count++;
 
         processRequest(connfd);
-
-
         close(connfd);
     }
 }
 
 
-void thread_make(long i) {
-//    void	*thread_main(void *);
+// MAIN -----------------------------------------------------------------------------------------------------
 
-    pthread_create(&tptr[i].thread_tid, NULL, &thread_main, (long *) i);
-    return;
-}
+/*
+ *
+ * Se define un array "clifd" en donde el thread principal va a almacenar los decriptores del socket conectado.
+ * Los threads disponibles en el pool toman uno de estos sockets conectados y dan servicio al cliente correspondiente.
+ * "iput" es el índice dentro del array de la próxima entrada a ser almacendada dentro del hilo principal y "iget" es
+ * el índice de la próxima entrada a ser extraida/recuperada por uno de los threads en el pool. Esta estructura de
+ * datos que esta compartida entre todos los threads tiene que estar protegida y se una un mutex junto con una condicion.
+ *
+ *
+ * El thread principal bloquea la llamada a accept, esperando por una conexión cliente que arribe. Cuando una arriba,
+ * el socket connectado es almacenada en la próxima entrada en el array "clifd", luego de obtener el mutex lock en el array.
+ * Se verifica también que el índice "iput" no ha alcanzado al índice "iget", lo que indica que el array no es lo
+ * suficientemente grande. La variable de condición se señala(signaled) y el mutex es liberado, permitiendo uno de los
+ * threads del pool dar servicio al cliente.
+ *
+ */
 
 
-int main(int argc, char *argv[]){
+int main(int argc, char **argv) {
+    int			i, listenfd, connfd;
+    socklen_t	addrlen, clilen;
+    struct sockaddr	*cliaddr;
+    int opt, port;
+    int portFlag = 0;
+    int numberOfThreadsFlag = 0;
 
-    struct sockaddr_in server_addr, client_addr;
-    char buf[2048];
-    char filePath[500];
-    int i;
 
-    sin_len = sizeof(client_addr);
-    fd_server = openListener();
-    //TODO: Valor del puerto tiene que ser pasado por parametro
-    bindToPort(fd_server, 8080);
+    while((opt = getopt(argc, argv, "-p:-n:")) != EOF) {
+        switch (opt) {
+            case 'p':
+                portFlag = 1;
+                port = atoi(optarg);
+                break;
+            case 'n':
+                numberOfThreadsFlag = 1;
+                nthreads = atoi(optarg);
+                break;
+            case ':':
+                usageError(argv[0], "Falta argumento", optopt);
+            case '?':
+                usageError(argv[0], "Opcion invalida", optopt);
+            default:
+                usageError(argv[0], "Falta argumento", optopt);
+        }
+    }
 
-    if(listen(fd_server, 10) == -1){ // una cola de 10 listeners
+    if(!portFlag){
+        usageError(argv[0], "Falta parametro", 'p');
+    }
+    if(!numberOfThreadsFlag){
+        usageError(argv[0], "Falta parametro", 'n');
+    }
+
+
+    listenfd = openListener();
+    bindToPort(listenfd, port);
+
+    if(listen(listenfd, 10) == -1){ // una cola de 10 listeners
         printf("\n listen error \n");
-        close(fd_server);
+        close(listenfd);
         exit(1);
     }
 
-    //TODO: este valor tiene que venir por parametro
-    tptr = calloc(nthreads, sizeof(Thread));
+    cliaddr = malloc(addrlen);
 
+    tptr = calloc(nthreads, sizeof(Thread));
+    iget = iput = 0;
+
+    /* Se crean los threads */
     for (i = 0; i < nthreads; i++) {
-       thread_make(i);
+        thread_make(i);
     }
 
     if(catch_signal(SIGINT, handleShutdown) == -1){
@@ -308,11 +387,22 @@ int main(int argc, char *argv[]){
         exit(1);
     }
 
-    for( ; ; ){
-        pause();
+    for ( ; ; ) {
+        clilen = addrlen;
+        connfd = accept(listenfd, cliaddr, &clilen);
+
+        pthread_mutex_lock(&clifd_mutex);
+        clifd[iput] = connfd;
+//        printf("0. iput %d, iget %d \n", iput, iget);
+        if (++iput == MAXNCLI) {
+            iput = 0;
+        }
+        if (iput == iget) {
+            printf("iput = iget = %d \n", iput);
+            exit(1);
+        }
+        pthread_cond_signal(&clifd_cond);
+        pthread_mutex_unlock(&clifd_mutex);
     }
-
-
-    return 0;
-
 }
+
