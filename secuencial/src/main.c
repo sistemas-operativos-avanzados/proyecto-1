@@ -135,7 +135,7 @@ static void usageError(char *progName, char *msg, int opt) {
     if (msg != NULL && opt != 0) {
         fprintf(stderr, "%s (-%c)\n", msg, printable(opt));
     }
-    fprintf(stderr, "Uso: %s [-v prog] [-V prog]\n", progName);
+    fprintf(stderr, "Uso: %s [-p puerto]\n", progName);
     exit(EXIT_FAILURE);
 }
 
@@ -254,8 +254,7 @@ int main(int argc, char *argv[]){
     /* Validación del parametro de entrada -p */
 
     if(argc == 1){
-        printf("sin argumentos\n");
-        usageError(argv[0], "Falta parametro", 112);
+        usageError(argv[0], "Falta parametro", 'p');
     }
     while((opt = getopt(argc, argv, "-p:")) != EOF) {
         switch (opt) {
