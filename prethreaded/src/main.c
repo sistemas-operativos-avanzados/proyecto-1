@@ -15,7 +15,7 @@
 #include <pthread.h>
 
 
-//#include	"threaddef.h"
+
 
 typedef struct {
     pthread_t		thread_tid;		/* thread ID */

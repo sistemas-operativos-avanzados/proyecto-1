@@ -4,7 +4,6 @@
 #include <sys/types.h>
 #include <sys/socket.h>
 #include <netinet/in.h>
-#include <netdb.h>
 #include <arpa/inet.h>
 #include <string.h>
 #include <sys/stat.h>
@@ -160,9 +159,7 @@ int openListener(){
     }
 }
 
-/*
- *
- */
+
 void bindToPort(int socket, int port){
     struct sockaddr_in server_addr;
     int reuse = 1;
@@ -187,7 +184,6 @@ void bindToPort(int socket, int port){
 
 int main(int argc, char *argv[]){
 
-    struct sockaddr_in server_addr, client_addr;
     socklen_t sin_len, len;
     pthread_t tid;
     struct sockaddr *cliaddr;
