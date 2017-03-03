@@ -12,18 +12,13 @@ ODIR=target
 all: clean $(ODIR) threaded
 
 main.o: $(SDIR)/*.c
-	$(CC) -pthreaded -c $(SOURCES) -o $(OBJECTS)
+	$(CC) -c $(SDIR)/$(SOURCES) -o $(ODIR)/$(OBJECTS)
 
 threaded: main.o
-	$(CC) main.o -o $(EXECUTABLE)
+	$(CC) -pthread $(ODIR)/main.o -o $(ODIR)/$(EXECUTABLE)
 
 $(ODIR):
 	mkdir target/
 
-clean: cleanobj cleanexec
-
-cleanobj:
-    rm main.o
-
-cleanexec:
-    rm $(EXECUTABLE)
+clean:
+	rm -rf target/
