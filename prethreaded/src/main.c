@@ -12,22 +12,35 @@
 #include <fcntl.h>
 
 
+/*
+Servidor PreThreaded HTTP:
+==========================
+ - Soporta únicamente solicitudes HTTP GET
+ - Está en la capacidad de atender una a la vez.
+ - El directorio web-resources actúa como "raiz" para servir los localizar y servir los archivos que se le solicitan
+ - Cada vez que se genera una conexión, se desplega en el stdout información sobre la misma
+
+Desarrollado por:
+=================
+- Raquel Elizondo Barrios
+- Carlos Martin Flores Gonzalez
+- Jose Daniel Salazar Vargas
+- Oscar Rodríguez Arroyo
+- Nelson Mendez Montero
+
+ */
+
+
 
 
 typedef struct {
     pthread_t		thread_tid;		/* thread ID */
-    long			thread_count;	/* # connections handled */
+    long			thread_count;	/* # conexiones manejadas */
 } Thread;
-Thread	*tptr;		/* array of Thread structures; calloc'ed */
+Thread	*tptr;		/* array de estructuras de Tread */
 
 #define	MAXNCLI	32
 int					clifd[MAXNCLI], iget, iput;
-//pthread_mutex_t		clifd_mutex;
-//pthread_cond_t		clifd_cond;
-
-
-
-
 
 
 static int			nthreads;
@@ -103,17 +116,12 @@ char *mimeType(char* resourceExt){
 }
 
 
-
-
 int getFileSize(int fd) {
     struct stat stat_struct;
     if (fstat(fd, &stat_struct) == -1)
         return (1);
     return (int) stat_struct.st_size;
 }
-
-
-
 
 /*
  * Esta funcion actua como manejador de la "interrupcion" del Crtl+C
@@ -124,7 +132,7 @@ void handleShutdown(int sig){
     int i;
 
     for (i = 0; i < nthreads; i++)
-        printf("thread %d, %ld connections\n", i, tptr[i].thread_count);
+        printf("hilo %d, %ld conexiones\n", i, tptr[i].thread_count);
 
     printf("\nSOA-Server-Prethreaded: Bye! \n");
     exit(0);
@@ -261,7 +269,7 @@ void *thread_main(void *arg) {
 
     int	connfd;
 
-    printf("thread %ld starting\n", (long) arg);
+    printf("hilo %ld iniciando\n", (long) arg);
 
     for ( ; ; ) {
         pthread_mutex_lock(&clifd_mutex);
@@ -275,40 +283,65 @@ void *thread_main(void *arg) {
         pthread_mutex_unlock(&clifd_mutex);
         tptr[(long) arg].thread_count++;
 
-        processRequest(connfd);		/* process request */
+        processRequest(connfd);
         close(connfd);
     }
 }
 
 
 void thread_make(long i) {
-//    void	*thread_main(void *);
 
     pthread_create(&tptr[i].thread_tid, NULL, &thread_main, (long *) i);
-    return;		/* main thread returns */
+    return;		/* hilo principal retorna */
 }
 
-
+// MAIN -----------------------------------------------------------------------------------------------------
 
 int main(int argc, char **argv) {
 
     int	 fd_server, connfd;
     long i;
-//    void		sig_int(int), thread_make(int);
-    socklen_t	sin_len, clilen;
+    socklen_t sin_len, clilen;
     struct sockaddr_in client_addr;
     struct sockaddr	*cliaddr;
 
+    int opt, port;
+    int portFlag = 0;
+    int numberOfThreadsFlag = 0;
+
+
+    while((opt = getopt(argc, argv, "-p:-n:")) != EOF) {
+        switch (opt) {
+            case 'p':
+                portFlag = 1;
+                port = atoi(optarg);
+                break;
+            case 'n':
+                numberOfThreadsFlag = 1;
+                nthreads = atoi(optarg);
+                break;
+            case ':':
+                usageError(argv[0], "Falta argumento", optopt);
+            case '?':
+                usageError(argv[0], "Opcion invalida", optopt);
+            default:
+                usageError(argv[0], "Falta argumento", optopt);
+        }
+    }
+
+    if(!portFlag){
+        usageError(argv[0], "Falta parametro", 'p');
+    }
+    if(!numberOfThreadsFlag){
+        usageError(argv[0], "Falta parametro", 'n');
+    }
 
     sin_len = sizeof(client_addr);
     fd_server = openListener();
-    //TODO: Valor del puerto tiene que ser pasado por parametro
-    bindToPort(fd_server, 8080);
+    bindToPort(fd_server, port);
 
     cliaddr = malloc(sin_len);
 
-    //TODO: pasar este valor por parametro
-    nthreads = 5;
     tptr = calloc(nthreads, sizeof(Thread));
     iget = iput = 0;
 
@@ -339,7 +372,6 @@ int main(int argc, char **argv) {
             iput = 0;
         }
         if (iput == iget){
-//            err_quit("iput = iget = %d", iput);
             printf("iput = iget = %d \n", iput);
             exit(1);
         }
@@ -348,164 +380,3 @@ int main(int argc, char **argv) {
         pthread_mutex_unlock(&clifd_mutex);
     }
 }
-
-
-
-
-
-
-
-
-
-
-
-
-//char webpage[] =
-//        "HTTP/1.1 200 OK\r\n"
-//                "Content-Type: text/html; charset=UTF-8\r\n\r\n"
-//                "<!doctype html>\r\n"
-//                "<html><head><title>Mi pagina</title></head>\r\n"
-//                "<body><h1>Bienvenidos</h1>\r\n"
-//                "<p>Esta es mi linda pagina!!!<br/>\r\n"
-//                "<a><img src=\"cowboy.jpg\" title=\"un Cowboy\"></a></p>\r\n"
-//                "</body></html>\r\n"
-//;
-//
-//
-//char notFoundPage[] = "<html><head><title>404</head></title>"
-//        "<body><p>404: El recurso solicitado no se encontró</p></body></html>";
-//
-//int fd_server;
-//socklen_t sin_len;
-//char* ROOT_FOLDER = "web-resources";
-//
-//
-//typedef struct {
-//    char *ext;
-//    char *mediatype;
-//} extn;
-//
-//
-//extn extensions[] ={
-//        {".gif", "image/gif" },
-//        {".txt", "text/plain" },
-//        {".jpg", "image/jpg" },
-//        {".jpeg","image/jpeg"},
-//        {".png", "image/png" },
-//        {".ico", "image/ico" },
-//        {".zip", "image/zip" },
-//        {".gz",  "image/gz"  },
-//        {".tar", "image/tar" },
-//        {".htm", "text/html" },
-//        {".html","text/html" },
-//        {".php", "text/html" },
-//        {".css", "text/css"},
-//        {".pdf","application/pdf"},
-//        {".js", "application/javascript"},
-//        {".zip","application/octet-stream"},
-//        {".rar","application/octet-stream"},
-//        {0,0}
-//};
-//
-//
-//char *okHeader = "HTTP/1.1 200 OK\r\nContent-Type: %s charset=UTF-8\r\nServer : SOA-Server-Forked\r\n\r\n";
-//char *notFoundHeader = "HTTP/1.1 400 Not Found\r\nContent-Type: text/html charset=UTF-8\r\nServer : SOA-Server-Forked\r\n\r\n";
-//char *notSupportedHeader = "HTTP/1.1 415 Unsupported Media Type\r\nnServer : SOA-Server-Forked\r\n\r\n";
-//
-////TODO: este valor se tiene que pasar por parámetro
-//int nthreads = 5;
-//
-//typedef struct {
-//    pthread_t		thread_tid;		/* thread ID */
-//    long			thread_count;	/* # connections handled */
-//} Thread;
-//Thread	*tptr;		/* array of Thread structures; calloc'ed */
-//
-//
-//pthread_mutex_t	mlock;
-//
-//
-
-//
-//// MAIN -----------------------------------------------------------------------------------------------------
-//
-//
-
-//
-//
-//
-//
-//
-//void *thread_main(void *arg) {
-//
-//    int				connfd;
-//    void			web_child(int);
-//    socklen_t		clilen;
-//    struct sockaddr	*cliaddr;
-//
-//    cliaddr = malloc(sin_len);
-//
-//    printf("Hilo %ld iniciando\n", (long) arg);
-//    for ( ; ; ) {
-//        clilen = sin_len;
-//        pthread_mutex_lock(&mlock);
-//        connfd = accept(fd_server, cliaddr, &clilen);
-//        pthread_mutex_unlock(&mlock);
-//        tptr[(long) arg].thread_count++;
-//
-////        web_child(connfd);		/* process request */
-//
-//        processRequest(connfd);
-//
-//
-//        close(connfd);
-//    }
-//}
-//
-//
-//void thread_make(long i) {
-////    void	*thread_main(void *);
-//
-//    pthread_create(&tptr[i].thread_tid, NULL, &thread_main, (long *) i);
-//    return;
-//}
-//
-//
-//int main(int argc, char *argv[]){
-//
-//    struct sockaddr_in server_addr, client_addr;
-//    char buf[2048];
-//    char filePath[500];
-//    int i;
-//
-//    sin_len = sizeof(client_addr);
-//    fd_server = openListener();
-//    //TODO: Valor del puerto tiene que ser pasado por parametro
-//    bindToPort(fd_server, 8080);
-//
-//    if(listen(fd_server, 10) == -1){ // una cola de 10 listeners
-//        printf("\n listen error \n");
-//        close(fd_server);
-//        exit(1);
-//    }
-//
-//    //TODO: este valor tiene que venir por parametro
-//    tptr = calloc(nthreads, sizeof(Thread));
-//
-//    for (i = 0; i < nthreads; i++) {
-//       thread_make(i);
-//    }
-//
-//    if(catch_signal(SIGINT, handleShutdown) == -1){
-//        printf("No se pudo mapear el manejador");
-//        exit(1);
-//    }
-//
-//    for( ; ; ){
-//        pause();
-//    }
-//
-//
-//    return 0;
-//
-//}
