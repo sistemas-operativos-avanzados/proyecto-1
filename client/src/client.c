@@ -7,9 +7,9 @@
 #include <arpa/inet.h>
 #include <unistd.h>
 #include <netdb.h>
-#include<pthread.h>
-#include<sys/syscall.h>
-#include<time.h>
+#include <pthread.h>
+#include <sys/syscall.h>
+#include <time.h>
 
 
 char *host, *filename, *portno;
