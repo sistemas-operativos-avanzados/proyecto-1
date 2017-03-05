@@ -5,16 +5,16 @@
 CC=gcc
 SOURCES=main.c
 OBJECTS=$(SOURCES:.c=.o)
-EXECUTABLE=threaded
+EXECUTABLE=preforked
 SDIR=src
 ODIR=target
 
-all: clean $(ODIR) threaded
+all: clean $(ODIR) preforked
 
 main.o: $(SDIR)/*.c
 	$(CC) -c $(SDIR)/$(SOURCES) -o $(ODIR)/$(OBJECTS)
 
-threaded: main.o
+preforked: main.o
 	$(CC) -pthread $(ODIR)/main.o -o $(ODIR)/$(EXECUTABLE)
 
 $(ODIR):

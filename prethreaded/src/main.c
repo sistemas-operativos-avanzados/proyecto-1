@@ -4,34 +4,54 @@
 #include <sys/types.h>
 #include <sys/socket.h>
 #include <netinet/in.h>
-#include <netdb.h>
 #include <arpa/inet.h>
 #include <string.h>
 #include <sys/stat.h>
-#include <fcntl.h>
 #include <signal.h>
-#include <errno.h>
-#include <syslog.h>
 #include <pthread.h>
+#include <fcntl.h>
 
 
-char webpage[] =
-        "HTTP/1.1 200 OK\r\n"
-                "Content-Type: text/html; charset=UTF-8\r\n\r\n"
-                "<!doctype html>\r\n"
-                "<html><head><title>Mi pagina</title></head>\r\n"
-                "<body><h1>Bienvenidos</h1>\r\n"
-                "<p>Esta es mi linda pagina!!!<br/>\r\n"
-                "<a><img src=\"cowboy.jpg\" title=\"un Cowboy\"></a></p>\r\n"
-                "</body></html>\r\n"
-;
+/*
+Servidor PreThreaded HTTP:
+==========================
+ - Soporta únicamente solicitudes HTTP GET
+ - Está en la capacidad de atender una a la vez.
+ - El directorio web-resources actúa como "raiz" para servir los localizar y servir los archivos que se le solicitan
+ - Cada vez que se genera una conexión, se desplega en el stdout información sobre la misma
+
+Desarrollado por:
+=================
+- Raquel Elizondo Barrios
+- Carlos Martin Flores Gonzalez
+- Jose Daniel Salazar Vargas
+- Oscar Rodríguez Arroyo
+- Nelson Mendez Montero
+
+ */
+
+
+
+
+typedef struct {
+    pthread_t		thread_tid;		/* thread ID */
+    long			thread_count;	/* # conexiones manejadas */
+} Thread;
+Thread	*tptr;		/* array de estructuras de Tread */
+
+#define	MAXNCLI	32
+int					clifd[MAXNCLI], iget, iput;
+
+
+static int			nthreads;
+pthread_mutex_t		clifd_mutex = PTHREAD_MUTEX_INITIALIZER;
+pthread_cond_t		clifd_cond = PTHREAD_COND_INITIALIZER;
+
 
 
 char notFoundPage[] = "<html><head><title>404</head></title>"
         "<body><p>404: El recurso solicitado no se encontró</p></body></html>";
 
-int fd_server;
-socklen_t sin_len;
 char* ROOT_FOLDER = "web-resources";
 
 
@@ -63,24 +83,17 @@ extn extensions[] ={
 };
 
 
-char *okHeader = "HTTP/1.1 200 OK\r\nContent-Type: %s charset=UTF-8\r\nServer : SOA-Server-Forked\r\n\r\n";
-char *notFoundHeader = "HTTP/1.1 400 Not Found\r\nContent-Type: text/html charset=UTF-8\r\nServer : SOA-Server-Forked\r\n\r\n";
-char *notSupportedHeader = "HTTP/1.1 415 Unsupported Media Type\r\nnServer : SOA-Server-Forked\r\n\r\n";
 
-//TODO: este valor se tiene que pasar por parámetro
-int nthreads = 5;
-
-typedef struct {
-    pthread_t		thread_tid;		/* thread ID */
-    long			thread_count;	/* # connections handled */
-} Thread;
-Thread	*tptr;		/* array of Thread structures; calloc'ed */
+char *okHeader = "HTTP/1.1 200 OK\r\nContent-Type: %s charset=UTF-8\r\nServer : SOA-Server-PreThreaded\r\n\r\n";
+char *notFoundHeader = "HTTP/1.1 400 Not Found\r\nContent-Type: text/html charset=UTF-8\r\nServer : SOA-Server-PreThreaded\r\n\r\n";
+char *notSupportedHeader = "HTTP/1.1 415 Unsupported Media Type\r\nnServer : SOA-Server-PreThreaded\r\n\r\n";
 
 
-pthread_mutex_t	mlock;
+#define printable(ch) (isprint((unsigned char) ch) ? ch : '#')
 
-
-// -----------------------------------------------------------------------------------------------------
+/* ==========================================================================================
+ * Funciones utilitarias
+ * ========================================================================================= */
 
 char *successHeader(char *mimeType){
 
@@ -103,6 +116,12 @@ char *mimeType(char* resourceExt){
 }
 
 
+int getFileSize(int fd) {
+    struct stat stat_struct;
+    if (fstat(fd, &stat_struct) == -1)
+        return (1);
+    return (int) stat_struct.st_size;
+}
 
 /*
  * Esta funcion actua como manejador de la "interrupcion" del Crtl+C
@@ -113,7 +132,7 @@ void handleShutdown(int sig){
     int i;
 
     for (i = 0; i < nthreads; i++)
-        printf("thread %d, %ld connections\n", i, tptr[i].thread_count);
+        printf("hilo %d, %ld conexiones\n", i, tptr[i].thread_count);
 
     printf("\nSOA-Server-Prethreaded: Bye! \n");
     exit(0);
@@ -131,9 +150,20 @@ int catch_signal(int sig, void (*handler)(int)){
     return sigaction(sig, &action, NULL);
 }
 
-/*
- *
- */
+
+static void usageError(char *progName, char *msg, int opt) {
+    if (msg != NULL && opt != 0) {
+        fprintf(stderr, "%s (-%c)\n", msg, printable(opt));
+    }
+    fprintf(stderr, "Uso: %s [-p puerto]\n", progName);
+    exit(EXIT_FAILURE);
+}
+
+/* ==========================================================================================
+ * Sockets: Abrir y asociar un puerto
+ * ========================================================================================= */
+
+
 int openListener(){
     int s = socket(AF_INET, SOCK_STREAM, 0);
     if(s < 0){
@@ -142,9 +172,7 @@ int openListener(){
     }
 }
 
-/*
- *
- */
+
 void bindToPort(int socket, int port){
     struct sockaddr_in server_addr;
     int reuse = 1;
@@ -164,18 +192,11 @@ void bindToPort(int socket, int port){
     }
 }
 
-int getFileSize(int fd) {
-    struct stat stat_struct;
-    if (fstat(fd, &stat_struct) == -1)
-        return (1);
-    return (int) stat_struct.st_size;
-}
-
-// MAIN -----------------------------------------------------------------------------------------------------
-
+/* ==========================================================================================
+ * Procesar una solicitud (request)
+ * ========================================================================================= */
 
 void processRequest(int fd_client){
-
 
     char buf[2048];
     char filePath[500];
@@ -240,67 +261,93 @@ void processRequest(int fd_client){
 }
 
 
-
-
+/* ==========================================================================================
+ * Creacion de Threads
+ * ========================================================================================= */
 
 void *thread_main(void *arg) {
 
-    int				connfd;
-    void			web_child(int);
-    socklen_t		clilen;
-    struct sockaddr	*cliaddr;
+    int	connfd;
 
-    cliaddr = malloc(sin_len);
+    printf("hilo %ld iniciando\n", (long) arg);
 
-    printf("Hilo %ld iniciando\n", (long) arg);
     for ( ; ; ) {
-        clilen = sin_len;
-        pthread_mutex_lock(&mlock);
-        connfd = accept(fd_server, cliaddr, &clilen);
-        pthread_mutex_unlock(&mlock);
+        pthread_mutex_lock(&clifd_mutex);
+        while (iget == iput) {
+            pthread_cond_wait(&clifd_cond, &clifd_mutex);
+        }
+        connfd = clifd[iget];	/* connected socket to service */
+        if (++iget == MAXNCLI) {
+            iget = 0;
+        }
+        pthread_mutex_unlock(&clifd_mutex);
         tptr[(long) arg].thread_count++;
 
-//        web_child(connfd);		/* process request */
-
         processRequest(connfd);
-
-
         close(connfd);
     }
 }
 
 
 void thread_make(long i) {
-//    void	*thread_main(void *);
 
     pthread_create(&tptr[i].thread_tid, NULL, &thread_main, (long *) i);
-    return;
+    return;		/* hilo principal retorna */
 }
 
+// MAIN -----------------------------------------------------------------------------------------------------
 
-int main(int argc, char *argv[]){
+int main(int argc, char **argv) {
 
-    struct sockaddr_in server_addr, client_addr;
-    char buf[2048];
-    char filePath[500];
-    int i;
+    int	 fd_server, connfd;
+    long i;
+    socklen_t sin_len, clilen;
+    struct sockaddr_in client_addr;
+    struct sockaddr	*cliaddr;
+
+    int opt, port;
+    int portFlag = 0;
+    int numberOfThreadsFlag = 0;
+
+
+    while((opt = getopt(argc, argv, "-p:-n:")) != EOF) {
+        switch (opt) {
+            case 'p':
+                portFlag = 1;
+                port = atoi(optarg);
+                break;
+            case 'n':
+                numberOfThreadsFlag = 1;
+                nthreads = atoi(optarg);
+                break;
+            case ':':
+                usageError(argv[0], "Falta argumento", optopt);
+            case '?':
+                usageError(argv[0], "Opcion invalida", optopt);
+            default:
+                usageError(argv[0], "Falta argumento", optopt);
+        }
+    }
+
+    if(!portFlag){
+        usageError(argv[0], "Falta parametro", 'p');
+    }
+    if(!numberOfThreadsFlag){
+        usageError(argv[0], "Falta parametro", 'n');
+    }
 
     sin_len = sizeof(client_addr);
     fd_server = openListener();
-    //TODO: Valor del puerto tiene que ser pasado por parametro
-    bindToPort(fd_server, 8080);
+    bindToPort(fd_server, port);
 
-    if(listen(fd_server, 10) == -1){ // una cola de 10 listeners
-        printf("\n listen error \n");
-        close(fd_server);
-        exit(1);
-    }
+    cliaddr = malloc(sin_len);
 
-    //TODO: este valor tiene que venir por parametro
     tptr = calloc(nthreads, sizeof(Thread));
+    iget = iput = 0;
 
+    /* Se crea pool de threads */
     for (i = 0; i < nthreads; i++) {
-       thread_make(i);
+        thread_make(i);
     }
 
     if(catch_signal(SIGINT, handleShutdown) == -1){
@@ -308,11 +355,28 @@ int main(int argc, char *argv[]){
         exit(1);
     }
 
-    for( ; ; ){
-        pause();
+    if(listen(fd_server, 10) == -1){ // una cola de 10 listeners
+        printf("\n listen error \n");
+        close(fd_server);
+        exit(1);
     }
 
+    for ( ; ; ) {
+        clilen = sin_len;
+        connfd = accept(fd_server, cliaddr, &clilen);
 
-    return 0;
+        pthread_mutex_lock(&clifd_mutex);
+        clifd[iput] = connfd;
+        if (++iput == MAXNCLI) {
+            printf("es cero \n");
+            iput = 0;
+        }
+        if (iput == iget){
+            printf("iput = iget = %d \n", iput);
+            exit(1);
+        }
 
+        pthread_cond_signal(&clifd_cond);
+        pthread_mutex_unlock(&clifd_mutex);
+    }
 }

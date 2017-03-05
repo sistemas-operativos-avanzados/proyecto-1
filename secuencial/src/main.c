@@ -11,16 +11,6 @@
 #include <signal.h>
 
 
-//char webpage[] =
-//        "HTTP/1.1 200 OK\r\n"
-//                "Content-Type: text/html; charset=UTF-8\r\n\r\n"
-//                "<!doctype html>\r\n"
-//                "<html><head><title>Mi pagina</title></head>\r\n"
-//                "<body><h1>Bienvenidos</h1>\r\n"
-//                "<p>Esta es mi linda pagina!!!<br/>\r\n"
-//                "<a><img src=\"cowboy.jpg\" title=\"un Cowboy\"></a></p>\r\n"
-//                "</body></html>\r\n"
-//;
 
 /*
 Servidor Secuencial HTTP:
@@ -145,7 +135,7 @@ static void usageError(char *progName, char *msg, int opt) {
     if (msg != NULL && opt != 0) {
         fprintf(stderr, "%s (-%c)\n", msg, printable(opt));
     }
-    fprintf(stderr, "Uso: %s [-v prog] [-V prog]\n", progName);
+    fprintf(stderr, "Uso: %s [-p puerto]\n", progName);
     exit(EXIT_FAILURE);
 }
 
@@ -264,8 +254,7 @@ int main(int argc, char *argv[]){
     /* Validación del parametro de entrada -p */
 
     if(argc == 1){
-        printf("sin argumentos\n");
-        usageError(argv[0], "Falta parametro", 112);
+        usageError(argv[0], "Falta parametro", 'p');
     }
     while((opt = getopt(argc, argv, "-p:")) != EOF) {
         switch (opt) {
