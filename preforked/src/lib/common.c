@@ -11,7 +11,7 @@ int Open_listenfd(int port) {
 
     int rv = open_listenfd(port);
     if (rv < 0)
-        unix_error("Could not listen on the given port \n");
+        unix_error("No se puede escuchar el puerto dado \n");
 
     return rv;
 }
@@ -20,7 +20,7 @@ int Accept(int s, struct sockaddr *addr, socklen_t *addrlen)
 {
     int rv;
     if ((rv = accept(s, addr, addrlen)) < 0)
-        unix_error("Accept error");
+        unix_error("Error al aceptar");
     return rv;
 }
 
@@ -28,7 +28,7 @@ void Close(int fd)
 {
     int rc;
     if ((rc = close(fd)) < 0)
-        unix_error("Close error");
+        unix_error("Error al cerrar");
 }
 
 /**
