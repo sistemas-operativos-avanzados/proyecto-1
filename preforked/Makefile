@@ -12,10 +12,10 @@ ODIR=target
 all: clean $(ODIR) preforked
 
 main.o: $(SDIR)/*.c
-	$(CC) -c $(SDIR)/$(SOURCES) -o $(ODIR)/$(OBJECTS)
+	$(CC) -c $(SDIR)/$(SOURCES) -o $(ODIR)/$(OBJECTS) 
 
 preforked: main.o
-	$(CC) -pthread $(ODIR)/main.o -o $(ODIR)/$(EXECUTABLE)
+	$(CC) -g -Wall -std=c99 $(ODIR)/main.o -o $(ODIR)/$(EXECUTABLE) src/lib/network.c src/lib/common.c src/lib/http.c
 
 $(ODIR):
 	mkdir target/
