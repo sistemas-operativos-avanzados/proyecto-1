@@ -38,13 +38,33 @@ pid_t fork_child(int listen_fd)
     }
 }
 
+void handleShutdown(int sig){
+
+    printf("\nfinalizando... \n");
+
+    if (errno != ECHILD) {
+        printf("wait error");
+    }
+
+    printf("\nSOA-Server-Preforked: Bye! \n");
+    exit(0);
+}
+
+int catch_signal(int sig, void (*handler)(int)){
+    struct sigaction action;
+    action.sa_handler = handler;
+    sigemptyset(&action.sa_mask);
+    action.sa_flags = 0;
+    return sigaction(sig, &action, NULL);
+}
+
 int main(int argc, char **argv) {
 
     if (argc < 3) {
         fprintf(stderr, "Uso: %s <puerto> <numero de procesos> \n", argv[0]);
         return EXIT_FAILURE;
     }
-
+    
     int port = atoi(argv[1]);
     int listen_fd = Open_listenfd(port);
     printf("%s escuchando en %d \n", argv[0], port);
@@ -53,7 +73,7 @@ int main(int argc, char **argv) {
 
     //Now fork from here. Each process will 'accept'.
     int c = 0;
-    int live_children = 0;
+    live_children = 0;
     while(c++ < processes) {
         pid_t child_pid = fork_child(listen_fd);
         if(child_pid != 0) {
@@ -63,6 +83,12 @@ int main(int argc, char **argv) {
     }
 
     while(live_children) {
+
+        if(catch_signal(SIGINT, handleShutdown) == -1){
+            printf("No se pudo mapear el manejador");
+            exit(1);
+        }
+
         int status = 0;
         pid_t cp = wait(&status);
 
