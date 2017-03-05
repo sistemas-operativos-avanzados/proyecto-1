@@ -80,5 +80,5 @@ Procesos _workers_ creados a priori usando _Pthreads_ para atender las solicitud
 
 ```bash
 > make           # construccion
-> ./cliente      # ejecución
+> ./cliente <host> <port> <filename> <n-threads> <n-cycles>      # ejecución
 ```  

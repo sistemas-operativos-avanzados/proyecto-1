@@ -218,6 +218,7 @@ void processRequest(int fd_client){
         if ((length = getFileSize(fileResource)) == -1) {
             printf("Error obtiendo tamanno de archivo\n");
         }
+	printf("File size: %i\n", length);
 
         size_t total_bytes_sent = 0;
         ssize_t bytes_sent;
@@ -226,8 +227,10 @@ void processRequest(int fd_client){
                 printf("Error enviando archivo -- sendfile\n");
 //                return -1;
             }
+		printf("Bytes sent: %li\n", bytes_sent);
             total_bytes_sent += bytes_sent;
         }
+	printf("Total bytes sent: %li\n", total_bytes_sent);
         close(fileResource);
 
 
