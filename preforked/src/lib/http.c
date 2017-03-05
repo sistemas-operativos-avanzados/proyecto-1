@@ -26,7 +26,7 @@ struct http_request_data http_parse_request(const int fd) {
         sscanf(buf, "%s %s %s", headers->method, headers->uri,
                 headers->version);
     } else {
-        perror("The request does not seem to be a valid http request");
+        perror("La solicitud no parece ser una solicitud http válida");
     }
 
     while(getline_from_fd(fd, buf, MAXLINE_LEN)) {
@@ -67,7 +67,7 @@ void http_print_request_data(struct http_request_data *data) {
     PRINT_STRUCT(headers, accept)
     PRINT_STRUCT(url, scheme)
     PRINT_STRUCT(url, host)
-    printf("port: %d \n", url->port);
+    printf("puerto: %d \n", url->port);
     PRINT_STRUCT(url, path)
     PRINT_STRUCT(url, query_string)
 }
