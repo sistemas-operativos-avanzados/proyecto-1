@@ -1,1 +1,0 @@
-/Library/Developer/CommandLineTools/usr/bin/cc  -g -Wl,-search_paths_first -Wl,-headerpad_max_install_names  CMakeFiles/sandbox.dir/server.c.o CMakeFiles/sandbox.dir/client.c.o  -o sandbox 
