@@ -216,7 +216,7 @@ void processRequest(int fd_client){
 
         int length;
         if ((length = getFileSize(fileResource)) == -1) {
-            printf("Error obtiendo tamanno de archivo, Pid = %d !\n", pid);
+            printf("Error obteniendo tamanno de archivo, Pid = %d !\n", pid);
         }
 
         size_t total_bytes_sent = 0;
@@ -277,7 +277,7 @@ int main(int argc, char *argv[]){
     fd_server = openListener();
     bindToPort(fd_server, port);
 
-    if(listen(fd_server, 10) == -1){ // una cola de 10 listeners
+    if(listen(fd_server, 1024) == -1){
         printf("\n listen error \n");
         close(fd_server);
         exit(1);
