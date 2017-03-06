@@ -3,19 +3,19 @@
 # de compilacion
 
 CC=gcc
-SOURCES=client.c
+SOURCES=cliente.c
 OBJECTS=$(SOURCES:.c=.o)
-EXECUTABLE=client
+EXECUTABLE=cliente
 SDIR=src
 ODIR=target
 
-all: clean $(ODIR) client
+all: clean $(ODIR) cliente
 
-client.o: $(SDIR)/*.c
+cliente.o: $(SDIR)/*.c
 	$(CC) -std=gnu99 -c -pthread $(SDIR)/$(SOURCES) -o $(ODIR)/$(OBJECTS)
 
-client: client.o
-	$(CC) -pthread $(ODIR)/client.o -o $(ODIR)/$(EXECUTABLE) -lrt
+cliente: cliente.o
+	$(CC) -pthread $(ODIR)/cliente.o -o $(ODIR)/$(EXECUTABLE) -lrt
 
 $(ODIR):
 	mkdir target/
