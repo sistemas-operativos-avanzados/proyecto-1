@@ -4,22 +4,31 @@
 #include <fcntl.h>
 #include <sys/stat.h>
 
-char webpage[] ="HTTP/1.1 200 OK\r\n"
-                "Content-Type: text/html; charset=UTF-8\r\n\r\n"
-                "<!doctype html>\r\n"
-                "<html><head><title>Mi pagina</title></head>\r\n"
-                "<body><h1>Bienvenidos</h1>\r\n"
-                "<p>Esta es mi linda pagina!!!<br/>\r\n"
-                "<a><img src=\"cowboy.jpg\" title=\"un Cowboy\"></a></p>\r\n"
-                "</body></html>\r\n";
+/*
+Servidor Preforked HTTP:
+==========================
+ - Soporta únicamente solicitudes HTTP GET
+ - Cada vez que llega una solicitud, uno de los procesos, creados al inicio, lo atiende si se encuentra desocupado
+ - El directorio web-resources actúa como "raiz" para servir los localizar y servir los archivos que se le solicitan
+ - Cada vez que se genera una conexión, se desplega en el stdout información sobre la misma
+
+Desarrollado por:
+=================
+- Raquel Elizondo Barrios
+- Carlos Martin Flores Gonzalez
+- Jose Daniel Salazar Vargas
+- Oscar Rodríguez Arroyo
+- Nelson Mendez Montero
+
+ */
 
 char notFoundPage[] = "<html><head><title>404</head></title><body><p>404: El recurso solicitado no se encontró</p></body></html>";
 
 char* ROOT_FOLDER = "web-resources";
 
-char *okHeader = "HTTP/1.1 200 OK\r\nContent-Type: %s charset=UTF-8\r\nServer : SOA-Server-Forked\r\n\r\n";
-char *notFoundHeader = "HTTP/1.1 400 Not Found\r\nContent-Type: text/html charset=UTF-8\r\nServer : SOA-Server-Forked\r\n\r\n";
-char *notSupportedHeader = "HTTP/1.1 415 Unsupported Media Type\r\nnServer : SOA-Server-Forked\r\n\r\n";
+char *okHeader = "HTTP/1.1 200 OK\r\nContent-Type: %s charset=UTF-8\r\nServer : SOA-Server-Preforked\r\n\r\n";
+char *notFoundHeader = "HTTP/1.1 400 Not Found\r\nContent-Type: text/html charset=UTF-8\r\nServer : SOA-Server-Preforked\r\n\r\n";
+char *notSupportedHeader = "HTTP/1.1 415 Unsupported Media Type\r\nnServer : SOA-Server-Preforked\r\n\r\n";
 
 typedef struct {
     char *ext;
@@ -77,8 +86,6 @@ void process_request(int fd_client) {
     puts("==> Conexion iniciada\n");
     memset(buf, 0, 2048); //     <==== aqui se va a dejar todo lo que viene en la peticion HTTP
     memset(filePath, 0, 500); // <==== aqui se va a dejar la ruta al archivo
-    //TODO: valorar si cambiar este read por transmision bit a bit
-    //TODO: validar si la peticion es de tipo HTTP GET, sino descartarla
 
     read(fd_client, buf, 2047);
 
@@ -131,6 +138,14 @@ void process_request(int fd_client) {
 
 }
 
+//===========================================================================
+// Función que se encarga de crear procesos. Es llamada dentro del main. 
+// Se puede llamar cuando se crean procesos al inicio o cuando los procesos 
+// son terminados con señal distinta de SIGUSR1
+//
+// Acá también se procesa la petición hecha desde un browser o utilizando
+// herramientas cómo cURL
+//===========================================================================
 pid_t fork_child(int listen_fd)
 {
     struct sockaddr addr;
@@ -159,6 +174,9 @@ pid_t fork_child(int listen_fd)
     }
 }
 
+//===========================================================================
+// Función que se encarga de manejar la "interrupción elegante"
+//===========================================================================
 void handleShutdown(int sig){
 
     printf("\nfinalizando... \n");
@@ -171,6 +189,9 @@ void handleShutdown(int sig){
     exit(0);
 }
 
+//===========================================================================
+// Función que se encarga de capturar la señal para la "interrupción elegante"
+//===========================================================================
 int catch_signal(int sig, void (*handler)(int)){
     struct sigaction action;
     action.sa_handler = handler;
@@ -179,6 +200,15 @@ int catch_signal(int sig, void (*handler)(int)){
     return sigaction(sig, &action, NULL);
 }
 
+//===========================================================================
+// Función principal. Por parámetro se reciben el puerto y el número de 
+// procesos a crear. 
+// Ejemplo de llamada: preforked 8080 5
+// Lo anterior quiere decir que se está creando un servidor de tipo 
+// preforked con 5 procesos escuchando el puerto 8080. 
+//
+// 
+//===========================================================================
 int main(int argc, char **argv) {
 
     if (argc < 3) {
@@ -218,12 +248,12 @@ int main(int argc, char **argv) {
         if(WIFEXITED(status))
             printf("Terminación normal con estado de salida=%d\n", WEXITSTATUS(status));
 
-        //Check if terminated by signal
+        //Revisa si alguna señal lo ha terminado
         if(WIFSIGNALED(status)) {
             int sig = WTERMSIG(status);
             printf("Matado con señal=%d.\n", sig);
 
-            //Restart child process, unless killed by SIGUSR1
+            //Reinicia un proceso, a menos de ser terminado con SIGUSR1
             if(sig != SIGUSR1) {
                 printf("Proceso hijo muerto. Reapareciendo .. ");
 
