@@ -104,7 +104,7 @@ static void *make_request() {
 
   while(cycles <= ncycles){
 
-	printf("\n********** Ejecutando ciclo %i of %i en hilo: %lu **********\n\n", cycles, ncycles, t_id);
+	printf("\n********** Ejecutando ciclo %i de %i en hilo: %lu **********\n\n", cycles, ncycles, t_id);
 
 	//se empieza a llevar la cuenta del tiempo
 	long start_time = get_current_time_ns();
