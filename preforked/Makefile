@@ -15,7 +15,7 @@ main.o: $(SDIR)/*.c
 	$(CC) -c $(SDIR)/$(SOURCES) -o $(ODIR)/$(OBJECTS) 
 
 preforked: main.o
-	$(CC) -g -Wall -std=c99 $(ODIR)/main.o -o $(ODIR)/$(EXECUTABLE) src/lib/network.c src/lib/common.c src/lib/http.c
+	$(CC) -g -Wall -std=c99 $(ODIR)/main.o -o $(ODIR)/$(EXECUTABLE) src/lib/network.c src/lib/common.c
 
 $(ODIR):
 	mkdir target/
