@@ -121,10 +121,6 @@ void process_request(int fd_client) {
         }
         close(fileResource);
 
-
-<<<<<<< HEAD
-    write(fd, "mensaje recibido\n", 25);
-=======
     } else {
         printf("Archivo no se encuentra \n");
         write(fd_client, notFoundHeader, strlen(notFoundHeader));
@@ -132,7 +128,7 @@ void process_request(int fd_client) {
     }
 
     puts("<== Finalizando conexion\n\n");
->>>>>>> oscar-dev
+
 }
 
 pid_t fork_child(int listen_fd)
