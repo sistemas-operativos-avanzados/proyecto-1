@@ -104,7 +104,7 @@ static void *make_request() {
 
   while(cycles <= ncycles){
 
-	printf("\n********** Ejecutando ciclo %i of %i en hilo: %lu **********\n\n", cycles, ncycles, t_id);
+	printf("\n********** Ejecutando ciclo %i de %i en hilo: %lu **********\n\n", cycles, ncycles, t_id);
 
 	//se empieza a llevar la cuenta del tiempo
 	long start_time = get_current_time_ns();
@@ -259,7 +259,7 @@ int main(int argc, char* argv[]) {
 
 	
     if (pthread_mutex_init(&lock, NULL) != 0){
-        error("\Fallo al iniciar el Mutex.\n");
+        error("\nFallo al iniciar el Mutex.\n");
     }
 
 
@@ -269,7 +269,7 @@ int main(int argc, char* argv[]) {
 	int err = pthread_create(&(tid), NULL, &make_request, NULL);
         //printf("Thread id %lu fue creado correctamente\n", pthread_self());
 	if (err != 0)
-	    error("\No se puede crear el hilo.\n");
+	    error("\nNo se puede crear el hilo.\n");
 	 else
 //         pthread_join(tid, NULL);
      i++;
@@ -296,10 +296,10 @@ printf("Tamaño total de la respuesta para la primera solicitud: %i\n", first_re
 printf("\tTamaño del encabezado: %i\n", first_response_header_size);
 printf("\tTamaño de los datos: %i\n", first_response_data_size);
 printf("Conteo de códigos de respuesta:\n");
-printf("\t200 OK: %i time(s).\n", ok_code_count);
-printf("\t400 Not Found: %i time(s).\n", not_found_code_count);
-printf("\t415 Unsupported Media Type: %i time(s).\n", not_supported_code_count);
-printf("\tOtro: %i time(s).\n", other_code_count);
+printf("\t200 OK: %i veces.\n", ok_code_count);
+printf("\t400 Not Found: %i veces.\n", not_found_code_count);
+printf("\t415 Unsupported Media Type: %i veces.\n", not_supported_code_count);
+printf("\tOtro: %i veces.\n", other_code_count);
 	
 printf("\n\nSOA-Cliente: Bye!\n");
     return 0;
