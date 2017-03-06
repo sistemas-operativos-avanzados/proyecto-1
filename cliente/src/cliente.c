@@ -254,8 +254,9 @@ int main(int argc, char* argv[]) {
     filename = argv[3];
     nthreads = atoi(argv[4]);
     ncycles = atoi(argv[5]);
-    int i = 1, y = 1;
+    int i = 0, y = 1;
     pthread_t tid;
+    pthread_t ids[nthreads];
 
 	
     if (pthread_mutex_init(&lock, NULL) != 0){
@@ -263,21 +264,24 @@ int main(int argc, char* argv[]) {
     }
 
 
-    while(i <= nthreads)
+    while(i < nthreads)
     {
         //d_sock = open_socket(host, portno);
 	int err = pthread_create(&(tid), NULL, &make_request, NULL);
         //printf("Thread id %lu fue creado correctamente\n", pthread_self());
-	if (err != 0)
+	if (err != 0){
 	    error("\nNo se puede crear el hilo.\n");
-	 else
+	}
+	 else{
+	    ids[i] = tid;
+	}
 //         pthread_join(tid, NULL);
      i++;
-     }
+    }
 
-    i = 1;
-    while(i <= nthreads){
-      pthread_join(tid, NULL);
+    i = 0;
+    while(i < nthreads){
+      pthread_join(ids[i], NULL);
       i++;
     }
 
