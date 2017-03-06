@@ -9,7 +9,6 @@
 #include <pthread.h>
 
 #include "network.h"
-#include "http.h"
 
 // Error handling prototypes
 void unix_error(char *msg);
