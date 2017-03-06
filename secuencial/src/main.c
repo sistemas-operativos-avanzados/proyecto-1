@@ -218,6 +218,7 @@ void processRequest(int fd_client){
         if ((length = getFileSize(fileResource)) == -1) {
             printf("Error obtiendo tamanno de archivo\n");
         }
+	printf("Tamanno archivo: %i\n", length);
 
         size_t total_bytes_sent = 0;
         ssize_t bytes_sent;
@@ -226,8 +227,10 @@ void processRequest(int fd_client){
                 printf("Error enviando archivo -- sendfile\n");
 //                return -1;
             }
+		printf("Bytes enviados: %li\n", bytes_sent);
             total_bytes_sent += bytes_sent;
         }
+	printf("Total bytes enviados: %li\n", total_bytes_sent);
         close(fileResource);
 
 
@@ -280,7 +283,7 @@ int main(int argc, char *argv[]){
 
     bindToPort(fd_server, port);
 
-    if(listen(fd_server, 10) == -1){ // una cola de 10 listeners
+    if(listen(fd_server, 1024) == -1){
         printf("\n listen error \n");
         close(fd_server);
         exit(1);

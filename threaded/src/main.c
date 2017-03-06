@@ -220,7 +220,7 @@ int main(int argc, char *argv[]){
     //TODO: Valor del puerto tiene que ser pasado por parametro
     bindToPort(fd_server, port);
 
-    if(listen(fd_server, 10) == -1){ // una cola de 10 listeners
+    if(listen(fd_server, 1024) == -1){
         printf("\n listen error \n");
         close(fd_server);
         exit(1);

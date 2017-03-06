@@ -198,7 +198,7 @@ int main(int argc, char **argv) {
 
     //Now fork from here. Each process will 'accept'.
     int c = 0;
-    live_children = 0;
+    int live_children = 0;
     while(c++ < processes) {
         pid_t child_pid = fork_child(listen_fd);
         if(child_pid != 0) {
