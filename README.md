@@ -61,8 +61,10 @@ Se crea un nuevo _thread_ para atender la solicitud.
 Procesos _workers_ creados a priori con _fork_ para atender las solicitudes.
 
 ```bash
-> make           # construccion
-> ./preforked    # ejecución
+> cd preforked 
+> make                  #construcción
+> cd target
+> ./preforked 8080 5    #ejecución
 ```   
 
 ## _Prethreaded_
