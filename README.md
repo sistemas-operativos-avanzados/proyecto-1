@@ -31,8 +31,9 @@ SOA Proyecto 1: Web Server Simplificado
 Se atiende a una solicitud a la vez.
 
 ```bash
-> make           # construccion
-> ./secuencial   # ejecución
+> cd secuencial
+> make                        # construccion
+> target/secuencial -p 8080   # ejecución
 ```  
 
 ## _Forked_
@@ -41,8 +42,9 @@ Se atiende a una solicitud a la vez.
 Se crea un nuevo proceso para atender la solicitud.
 
 ```bash
-> make           # construccion
-> ./forked       # ejecución
+> cd forked
+> make                        # construccion
+> target/forked -p 8081       # ejecución
 ```   
 
 ## _Threaded_
@@ -51,8 +53,9 @@ Se crea un nuevo proceso para atender la solicitud.
 Se crea un nuevo _thread_ para atender la solicitud.
 
 ```bash
-> make           # construccion
-> ./threaded     # ejecución
+> cd threaded
+> make                         # construccion
+> target/threaded -p 8082      # ejecución
 ```  
 
 ## _Preforked_
@@ -62,9 +65,8 @@ Procesos _workers_ creados a priori con _fork_ para atender las solicitudes.
 
 ```bash
 > cd preforked 
-> make                  #construcción
-> cd target
-> ./preforked 8080 5    #ejecución
+> make                       #construcción
+> target/preforked 8083 5    #ejecución
 ```   
 
 ## _Prethreaded_
@@ -73,14 +75,16 @@ Procesos _workers_ creados a priori con _fork_ para atender las solicitudes.
 Procesos _workers_ creados a priori usando _Pthreads_ para atender las solicitudes.
 
 ```bash
-> make           # construccion
-> ./prethreaded  # ejecución
+> cd prethreaded
+> make                               # construccion
+> target/prethreaded -p 8084 -n 5   # ejecución
 ```   
 
 ## Cliente
 [Volver](#tabla-de-contenidos) 
 
 ```bash
+> cd cliente
 > make           # construccion
-> ./cliente <maquina> <puerto> <archivo> <N-threads> <N-ciclos>      # ejecución
+> target/cliente <maquina> <puerto> <archivo> <N-threads> <N-ciclos>      # ejecución
 ```  

@@ -265,6 +265,15 @@ void processRequest(int fd_client){
  * Creacion de Threads
  * ========================================================================================= */
 
+/*
+ *
+ * Cada thread en el pool intenta obtener un lock del mutex que protege el array "clifd". Cuando el lock se obtiene,
+ * no hay nada que hacer si los índices "iget" e "iput" son iguales. Bajo ese escenario, el hilo se va a dormir(sleep)
+ * por medio de la llamada a pthread_cond_wait. Será despertado cuando se llama a pthread_cond_signal en el thread
+ * principal luego de que una conexion sea aceptada. Cuando un thread obtiene una conexión llama a processRequest.
+ *
+ */
+
 void *thread_main(void *arg) {
 
     int	connfd;
@@ -296,6 +305,24 @@ void thread_make(long i) {
 }
 
 // MAIN -----------------------------------------------------------------------------------------------------
+
+/*
+ *
+ * Se define un array "clifd" en donde el thread principal va a almacenar los decriptores del socket conectado.
+ * Los threads disponibles en el pool toman uno de estos sockets conectados y dan servicio al cliente correspondiente.
+ * "iput" es el índice dentro del array de la próxima entrada a ser almacendada dentro del hilo principal y "iget" es
+ * el índice de la próxima entrada a ser extraida/recuperada por uno de los threads en el pool. Esta estructura de
+ * datos que esta compartida entre todos los threads tiene que estar protegida y se una un mutex junto con una condicion.
+ *
+ *
+ * El thread principal bloquea la llamada a accept, esperando por una conexión cliente que arribe. Cuando una arriba,
+ * el socket connectado es almacenada en la próxima entrada en el array "clifd", luego de obtener el mutex lock en el array.
+ * Se verifica también que el índice "iput" no ha alcanzado al índice "iget", lo que indica que el array no es lo
+ * suficientemente grande. La variable de condición se señala(signaled) y el mutex es liberado, permitiendo uno de los
+ * threads del pool dar servicio al cliente.
+ *
+ */
+
 
 int main(int argc, char **argv) {
 
